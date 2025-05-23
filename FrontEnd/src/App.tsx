@@ -4,6 +4,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import { Provider } from 'react-redux';
 import theme from './theme';
 import store from './store';
+import AppRoutes from './routes';
 
 // Layout
 import Layout from './components/layout/Layout';

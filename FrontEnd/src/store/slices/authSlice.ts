@@ -1,66 +1,121 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { authAPI } from '../../services/api';
-import { User } from '../../types/auth.types';
+import { API_ENDPOINTS } from '../../utils/constants';
+import { getStoredToken, setStoredToken, removeStoredToken } from '../../utils/helpers';
+
+interface User {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  role: string;
+  avatarUrl?: string;
+}
 
 interface AuthState {
   user: User | null;
   token: string | null;
-  loading: boolean;
+  isAuthenticated: boolean;
+  isLoading: boolean;
   error: string | null;
 }
 
 const initialState: AuthState = {
   user: null,
-  token: localStorage.getItem('token'),
-  loading: false,
+  token: getStoredToken(),
+  isAuthenticated: !!getStoredToken(),
+  isLoading: false,
   error: null,
 };
 
 export const login = createAsyncThunk(
   'auth/login',
-  async (credentials: { email: string; password: string }) => {
-    const response = await authAPI.login(credentials);
-    localStorage.setItem('token', response.data.token);
-    return response.data;
+  async (credentials: { email: string; password: string }, { rejectWithValue }) => {
+    try {
+      const response = await fetch(API_ENDPOINTS.AUTH.LOGIN, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.message);
+      }
+
+      const data = await response.json();
+      setStoredToken(data.token);
+      return data;
+    } catch (error) {
+      return rejectWithValue('Failed to login');
+    }
   }
 );
 
 export const register = createAsyncThunk(
   'auth/register',
   async (userData: {
-    username: string;
     email: string;
     password: string;
+    username: string;
     displayName: string;
-    preferredLanguage: string;
-  }) => {
-    const response = await authAPI.register(userData);
-    return response.data;
+  }, { rejectWithValue }) => {
+    try {
+      const response = await fetch(API_ENDPOINTS.AUTH.REGISTER, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.message);
+      }
+
+      const data = await response.json();
+      setStoredToken(data.token);
+      return data;
+    } catch (error) {
+      return rejectWithValue('Failed to register');
+    }
   }
 );
 
-export const getUserProfile = createAsyncThunk('auth/getProfile', async () => {
-  const response = await authAPI.getUserProfile();
-  return response.data;
+export const fetchProfile = createAsyncThunk(
+  'auth/fetchProfile',
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      const { auth } = getState() as { auth: AuthState };
+      const response = await fetch(API_ENDPOINTS.AUTH.PROFILE, {
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return rejectWithValue(error.message);
+      }
+
+      return await response.json();
+    } catch (error) {
+      return rejectWithValue('Failed to fetch profile');
+    }
+  }
+);
+
+export const logout = createAsyncThunk('auth/logout', async () => {
+  removeStoredToken();
+  return null;
 });
-
-export const updateProfile = createAsyncThunk(
-  'auth/updateProfile',
-  async (profileData: FormData) => {
-    const response = await authAPI.updateProfile(profileData);
-    return response.data;
-  }
-);
 
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    logout: (state) => {
-      state.user = null;
-      state.token = null;
-      localStorage.removeItem('token');
-    },
     clearError: (state) => {
       state.error = null;
     },
@@ -69,58 +124,55 @@ const authSlice = createSlice({
     builder
       // Login
       .addCase(login.pending, (state) => {
-        state.loading = true;
+        state.isLoading = true;
         state.error = null;
       })
       .addCase(login.fulfilled, (state, action) => {
-        state.loading = false;
-        state.user = action.payload.user;
+        state.isLoading = false;
+        state.isAuthenticated = true;
         state.token = action.payload.token;
+        state.user = action.payload.user;
       })
       .addCase(login.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message || 'Login failed';
+        state.isLoading = false;
+        state.error = action.payload as string;
       })
       // Register
       .addCase(register.pending, (state) => {
-        state.loading = true;
+        state.isLoading = true;
         state.error = null;
       })
-      .addCase(register.fulfilled, (state) => {
-        state.loading = false;
+      .addCase(register.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = true;
+        state.token = action.payload.token;
+        state.user = action.payload.user;
       })
       .addCase(register.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message || 'Registration failed';
+        state.isLoading = false;
+        state.error = action.payload as string;
       })
-      // Get Profile
-      .addCase(getUserProfile.pending, (state) => {
-        state.loading = true;
+      // Fetch Profile
+      .addCase(fetchProfile.pending, (state) => {
+        state.isLoading = true;
         state.error = null;
       })
-      .addCase(getUserProfile.fulfilled, (state, action) => {
-        state.loading = false;
+      .addCase(fetchProfile.fulfilled, (state, action) => {
+        state.isLoading = false;
         state.user = action.payload;
       })
-      .addCase(getUserProfile.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message || 'Failed to fetch profile';
+      .addCase(fetchProfile.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
       })
-      // Update Profile
-      .addCase(updateProfile.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(updateProfile.fulfilled, (state, action) => {
-        state.loading = false;
-        state.user = action.payload;
-      })
-      .addCase(updateProfile.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message || 'Failed to update profile';
+      // Logout
+      .addCase(logout.fulfilled, (state) => {
+        state.user = null;
+        state.token = null;
+        state.isAuthenticated = false;
       });
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { clearError } = authSlice.actions;
 export default authSlice.reducer; 

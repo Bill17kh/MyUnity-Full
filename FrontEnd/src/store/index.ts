@@ -2,15 +2,19 @@ import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
 import communityReducer from './slices/communitySlice';
 import eventReducer from './slices/eventSlice';
-import helpReducer from './slices/helpSlice';
+import helpRequestReducer from './slices/helpRequestSlice';
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     community: communityReducer,
     event: eventReducer,
-    help: helpReducer,
+    helpRequest: helpRequestReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: false,
+    }),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
